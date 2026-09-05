@@ -9,140 +9,247 @@ package Binario;
  *
  * @author David Suazo Palao
  */
-import javax.swing.*;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
+import javax.swing.JPanel;
+import javax.swing.JTable;
+import javax.swing.JTextPane;
+import javax.swing.ListSelectionModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
-import java.awt.*;
-import java.util.ArrayList;
+import javax.swing.text.Element;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
 
 public class Tablas {
+    private static final String PROPIEDAD_FORMATOS = "formatosCeldas";
+    private static final int ANCHO_COLUMNA = 110;
+    private static final int ALTO_FILA = 26;
+
     private final JTextPane txtPane;
-    private final List<JTable> listaTablas = new ArrayList<>();
+    private final FormatoTexto formatoBase;
+    private JTable tablaActiva;
+    private Runnable alModificar;
+    private Consumer<FormatoTexto> alSeleccionarCelda;
 
-    public Tablas(JTextPane txtPane) {
+    public Tablas(JTextPane txtPane, FormatoTexto formatoBase) {
         this.txtPane = txtPane;
-    }
-
-    public void showInsterTableDialog(Component ventanaPadre) {
-        JTextField campoFilas = new JTextField("3", 5);
-        JTextField campoColumnas = new JTextField("3", 5);
-
-        JPanel panelFormulario = new JPanel(new GridLayout(2, 2, 5, 5));
-        panelFormulario.add(new JLabel("Numero de Filas: "));
-        panelFormulario.add(campoFilas);
-        panelFormulario.add(new JLabel("Numero de Columnas: "));
-        panelFormulario.add(campoColumnas);
-
-        int botonPresionado = JOptionPane.showConfirmDialog(
-            ventanaPadre, 
-            panelFormulario, 
-            "Insertar Nueva Tabla", 
-            JOptionPane.OK_CANCEL_OPTION
-        );
-
-        if (botonPresionado == JOptionPane.OK_OPTION) {
-            try {
-                int cantidadFilas = Integer.parseInt(campoFilas.getText().trim());
-                int cantidadColumnas = Integer.parseInt(campoColumnas.getText().trim());
-
-                if (cantidadFilas <= 0 || cantidadColumnas <= 0) {
-                    throw new NumberFormatException();
-                }
-                insertTable(cantidadFilas, cantidadColumnas, null);
-            } catch (Exception error) {
-                JOptionPane.showMessageDialog(
-                    ventanaPadre, 
-                    "Por favor ingrese numeros enteros validos y mayores a cero", 
-                    "Error de entrada", 
-                    JOptionPane.ERROR_MESSAGE
-                );
+        this.formatoBase = formatoBase;
+        txtPane.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusGained(FocusEvent e) {
+                tablaActiva = null;
             }
-        }
+        });
     }
 
-    public void insertTable(int filas, int columnas, BinaryPersistenceManager.TableData datosGuardados) {
+    public void setAlModificar(Runnable alModificar) {
+        this.alModificar = alModificar;
+    }
+
+    public void setAlSeleccionarCelda(Consumer<FormatoTexto> alSeleccionarCelda) {
+        this.alSeleccionarCelda = alSeleccionarCelda;
+    }
+
+    public JTable insertTable(int filas, int columnas, TablaDatos datosGuardados) {
         DefaultTableModel modeloTabla = new DefaultTableModel(filas, columnas);
         JTable tabla = new JTable(modeloTabla);
-        tabla.setRowHeight(26);
+        FormatoTexto[][] formatos = new FormatoTexto[filas][columnas];
 
-        int[][] matrizColores = new int[filas][columnas];
-
-        if (datosGuardados != null) {
-            for (int f = 0; f < filas; f++) {
-                for (int c = 0; c < columnas; c++) {
-                    tabla.setValueAt(datosGuardados.cellContents[f][c], f, c);
-                    matrizColores[f][c] = datosGuardados.cellColors[f][c];
+        for (int f = 0; f < filas; f++) {
+            for (int c = 0; c < columnas; c++) {
+                if (datosGuardados != null) {
+                    modeloTabla.setValueAt(datosGuardados.getContenido(f, c), f, c);
+                    formatos[f][c] = datosGuardados.getFormato(f, c).copia();
+                } else {
+                    formatos[f][c] = formatoBase.copia();
                 }
             }
         }
 
-        tabla.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+        tabla.putClientProperty(PROPIEDAD_FORMATOS, formatos);
+        tabla.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
+        tabla.setRowHeight(ALTO_FILA);
+        tabla.setCellSelectionEnabled(true);
+        tabla.setSelectionMode(ListSelectionModel.SINGLE_INTERVAL_SELECTION);
+        tabla.setGridColor(new Color(160, 160, 160));
+        tabla.setShowGrid(true);
+        tabla.getTableHeader().setReorderingAllowed(false);
+        tabla.setDefaultRenderer(Object.class, new RenderizadorCelda());
+        for (int c = 0; c < columnas; c++) {
+            tabla.getColumnModel().getColumn(c).setPreferredWidth(ANCHO_COLUMNA);
+        }
+
+        tabla.addFocusListener(new FocusAdapter() {
             @Override
-            public Component getTableCellRendererComponent(JTable tbl, Object valor, boolean estaSeleccionado, boolean tieneFoco, int f, int c) {
-                Component componenteCelda = super.getTableCellRendererComponent(tbl, valor, estaSeleccionado, tieneFoco, f, c);
-                int colorGuardado = matrizColores[f][c];
-
-                if (colorGuardado != 0) {
-                    componenteCelda.setForeground(new Color(colorGuardado));
-                } else {
-                    componenteCelda.setForeground(Color.BLACK);
-                }
-                return componenteCelda;
+            public void focusGained(FocusEvent e) {
+                tablaActiva = tabla;
+                notificarSeleccion(tabla);
             }
         });
-
-        JPopupMenu menuContextual = new JPopupMenu();
-        JMenuItem opcionColor = new JMenuItem("Cambiar Color de Texto a Celda");
-
-        opcionColor.addActionListener(evento -> {
-            int filaSeleccionada = tabla.getSelectedRow();
-            int columnaSeleccionada = tabla.getSelectedColumn();
-
-            if (filaSeleccionada != -1 && columnaSeleccionada != -1) {
-                Color colorElegido = JColorChooser.showDialog(tabla, "Selecciona el color para esta celda", Color.BLACK);
-
-                if (colorElegido != null) {
-                    matrizColores[filaSeleccionada][columnaSeleccionada] = colorElegido.getRGB();
-                    tabla.repaint();
-                }
+        tabla.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                notificarSeleccion(tabla);
             }
         });
-
-        menuContextual.add(opcionColor);
-        tabla.setComponentPopupMenu(menuContextual);
+        tabla.getColumnModel().getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                notificarSeleccion(tabla);
+            }
+        });
+        modeloTabla.addTableModelListener(e -> notificarModificacion());
 
         JPanel contenedorTabla = new JPanel(new BorderLayout());
         contenedorTabla.add(tabla.getTableHeader(), BorderLayout.NORTH);
         contenedorTabla.add(tabla, BorderLayout.CENTER);
-        contenedorTabla.setMaximumSize(new Dimension(500, filas * 28 + 30));
+        Dimension tamano = new Dimension(ANCHO_COLUMNA * columnas, filas * ALTO_FILA + tabla.getTableHeader().getPreferredSize().height);
+        contenedorTabla.setPreferredSize(tamano);
+        contenedorTabla.setMaximumSize(tamano);
 
-        listaTablas.add(tabla);
-        txtPane.setCaretPosition(txtPane.getDocument().getLength());
         txtPane.insertComponent(contenedorTabla);
+        return tabla;
     }
 
-    public List<BinaryPersistenceManager.TableData> exportTablesData() {
-        List<BinaryPersistenceManager.TableData> listaExportar = new ArrayList<>();
-
-        for (JTable tabla : listaTablas) {
-            int filas = tabla.getRowCount();
-            int columnas = tabla.getColumnCount();
-            BinaryPersistenceManager.TableData datosTabla = new BinaryPersistenceManager.TableData(filas, columnas);
-
-            for (int f = 0; f < filas; f++) {
-                for (int c = 0; c < columnas; c++) {
-                    Object contenido = tabla.getValueAt(f, c);
-                    datosTabla.cellContents[f][c] = (contenido != null) ? contenido.toString() : "";
-                    datosTabla.cellColors[f][c] = tabla.getForeground().getRGB();
-                }
-            }
-            listaExportar.add(datosTabla);
+    public void insertarDesdeDatos(TablaDatos datos) {
+        int longitud = txtPane.getDocument().getLength();
+        int posicion = datos.getPosicion();
+        if (posicion < longitud) {
+            txtPane.select(posicion, posicion + 1);
+        } else {
+            txtPane.setCaretPosition(longitud);
         }
+        insertTable(datos.getFilas(), datos.getColumnas(), datos);
+    }
+
+    public boolean hayCeldaSeleccionada() {
+        return tablaActiva != null && tablaActiva.isShowing()
+                && tablaActiva.getSelectedRowCount() > 0 && tablaActiva.getSelectedColumnCount() > 0;
+    }
+
+    public void aplicarFormato(Consumer<FormatoTexto> cambio) {
+        if (!hayCeldaSeleccionada()) {
+            return;
+        }
+        JTable tabla = tablaActiva;
+        FormatoTexto[][] formatos = formatosDe(tabla);
+        for (int f : tabla.getSelectedRows()) {
+            for (int c : tabla.getSelectedColumns()) {
+                cambio.accept(formatos[f][c]);
+            }
+        }
+        tabla.repaint();
+        notificarModificacion();
+    }
+
+    public List<TablaDatos> exportTablesData() {
+        List<TablaDatos> listaExportar = new ArrayList<>();
+        StyledDocument doc = txtPane.getStyledDocument();
+        recolectarTablas(doc.getDefaultRootElement(), listaExportar);
         return listaExportar;
     }
 
     public void clearTable() {
-        listaTablas.clear();
+        tablaActiva = null;
+    }
+
+    private void recolectarTablas(Element elemento, List<TablaDatos> destino) {
+        if (elemento.isLeaf()) {
+            Component componente = StyleConstants.getComponent(elemento.getAttributes());
+            JTable tabla = buscarTabla(componente);
+            if (tabla != null) {
+                destino.add(exportarTabla(tabla, elemento.getStartOffset()));
+            }
+            return;
+        }
+        for (int i = 0; i < elemento.getElementCount(); i++) {
+            recolectarTablas(elemento.getElement(i), destino);
+        }
+    }
+
+    private JTable buscarTabla(Component componente) {
+        if (componente instanceof JTable) {
+            return (JTable) componente;
+        }
+        if (componente instanceof Container) {
+            for (Component hijo : ((Container) componente).getComponents()) {
+                JTable tabla = buscarTabla(hijo);
+                if (tabla != null) {
+                    return tabla;
+                }
+            }
+        }
+        return null;
+    }
+
+    private TablaDatos exportarTabla(JTable tabla, int posicion) {
+        if (tabla.isEditing()) {
+            tabla.getCellEditor().stopCellEditing();
+        }
+        int filas = tabla.getRowCount();
+        int columnas = tabla.getColumnCount();
+        FormatoTexto[][] formatos = formatosDe(tabla);
+        TablaDatos datosTabla = new TablaDatos(posicion, filas, columnas);
+        for (int f = 0; f < filas; f++) {
+            for (int c = 0; c < columnas; c++) {
+                Object contenido = tabla.getValueAt(f, c);
+                datosTabla.setContenido(f, c, contenido != null ? contenido.toString() : "");
+                datosTabla.setFormato(f, c, formatos[f][c].copia());
+            }
+        }
+        return datosTabla;
+    }
+
+    private static FormatoTexto[][] formatosDe(JTable tabla) {
+        return (FormatoTexto[][]) tabla.getClientProperty(PROPIEDAD_FORMATOS);
+    }
+
+    private void notificarSeleccion(JTable tabla) {
+        int f = tabla.getSelectedRow();
+        int c = tabla.getSelectedColumn();
+        if (alSeleccionarCelda != null && f != -1 && c != -1) {
+            alSeleccionarCelda.accept(formatosDe(tabla)[f][c]);
+        }
+    }
+
+    private void notificarModificacion() {
+        if (alModificar != null) {
+            alModificar.run();
+        }
+    }
+
+    private static class RenderizadorCelda extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable tbl, Object valor, boolean estaSeleccionado, boolean tieneFoco, int f, int c) {
+            String texto = valor == null ? "" : valor.toString();
+            super.getTableCellRendererComponent(tbl, texto, estaSeleccionado, tieneFoco, f, c);
+            FormatoTexto formato = formatosDe(tbl)[f][c];
+            setFont(formato.aFont());
+            if (!estaSeleccionado) {
+                setForeground(formato.getColor());
+            }
+            if (formato.isSubrayado() || formato.isTachado()) {
+                String html = escapar(texto);
+                if (formato.isSubrayado()) {
+                    html = "<u>" + html + "</u>";
+                }
+                if (formato.isTachado()) {
+                    html = "<s>" + html + "</s>";
+                }
+                setText("<html>" + html + "</html>");
+            }
+            return this;
+        }
+
+        private static String escapar(String texto) {
+            return texto.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        }
     }
 }
-  

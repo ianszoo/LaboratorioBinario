@@ -6,7 +6,6 @@
 package Binario;
 
 import java.awt.Color;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.JTextPane;
@@ -29,7 +28,7 @@ public class TextEditor {
         this.txt = txt;
         this.doc = txt.getStyledDocument();
     }
-    
+
     public void applyBold(boolean enable) {
         applyAttribute(StyleConstants.Bold, enable);
     }
@@ -73,55 +72,43 @@ public class TextEditor {
     private void updateSelection(AttributeSet att) {
         int start=txt.getSelectionStart();
         int end=txt.getSelectionEnd();
-        
+
         if (start != end){
             doc.setCharacterAttributes(start,end-start,att, false);
         } else {
             txt.setCharacterAttributes(att, false);
         }
     }
-    
-    public List<AdminPersistencia.TextRun> extractRuns() throws BadLocationException{
-        List<AdminPersistencia.TextRun> run=new ArrayList<>();
+
+    public void clear() throws BadLocationException{
+        doc.remove(0, doc.getLength());
+    }
+
+    public List<FragmentoTexto> extractRuns() throws BadLocationException{
+        List<FragmentoTexto> run=new ArrayList<>();
         int length=doc.getLength();
         int pos=0;
-        
+
         while(pos<length){
             Element e=doc.getCharacterElement(pos);
             AttributeSet as=e.getAttributes();
             int fin=e.getEndOffset();
-            
+
             if(fin>length){
                 fin=length;
             }
             String txt=doc.getText(pos,fin-pos);
-            String font=StyleConstants.getFontFamily(as);
-            int size=StyleConstants.getFontSize(as);
-            Color color=StyleConstants.getForeground(as);
-            boolean bold=StyleConstants.isBold(as);
-            boolean italic=StyleConstants.isItalic(as);
-            boolean underline=StyleConstants.isUnderline(as);
-            boolean strike=StyleConstants.isStrikeThrough(as);
-            
-            run.add(new AdminPersistencia.TextRun(txt,font,size,color,bold,italic,underline,strike));
+            run.add(new FragmentoTexto(txt,FormatoTexto.desdeAtributos(as)));
             pos=fin;
         }
         return run;
     }
-    
-    public void Runs(List<AdminPersistencia.TextRun> runs)throws BadLocationException{
-        doc.remove(0, doc.getLength());
-        for (AdminPersistencia.textRun run:runs) {
-            SimpleAttributeSet att=new SimpleAttributeSet();
-            StyleConstants.setFontFamily(att,run.fontFamily);
-            StyleConstants.setFontSize(att,run.fontSize);
-            StyleConstants.setForeground(att,run.color);
-            StyleConstants.setBold(att,run.bold);
-            StyleConstants.setItalic(att,run.italic);
-            StyleConstants.setUnderline(att,run.underline);
-            StyleConstants.setStrikeThrough(att,run.strikethrough);
-            
-            doc.insertString(doc.getLength(),run.text,att);
+
+    public void applyRuns(List<FragmentoTexto> runs)throws BadLocationException{
+        clear();
+        for (FragmentoTexto run:runs) {
+            doc.insertString(doc.getLength(),run.getTexto(),run.getFormato().aAtributos());
         }
+        txt.setCaretPosition(0);
     }
 }
