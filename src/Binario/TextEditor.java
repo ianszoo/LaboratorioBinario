@@ -108,4 +108,20 @@ public class TextEditor {
         }
         return run;
     }
+    
+    public void Runs(List<AdminPersistencia.TextRun> runs)throws BadLocationException{
+        doc.remove(0, doc.getLength());
+        for (AdminPersistencia.textRun run:runs) {
+            SimpleAttributeSet att=new SimpleAttributeSet();
+            StyleConstants.setFontFamily(att,run.fontFamily);
+            StyleConstants.setFontSize(att,run.fontSize);
+            StyleConstants.setForeground(att,run.color);
+            StyleConstants.setBold(att,run.bold);
+            StyleConstants.setItalic(att,run.italic);
+            StyleConstants.setUnderline(att,run.underline);
+            StyleConstants.setStrikeThrough(att,run.strikethrough);
+            
+            doc.insertString(doc.getLength(),run.text,att);
+        }
+    }
 }
