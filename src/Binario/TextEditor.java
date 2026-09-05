@@ -6,8 +6,13 @@
 package Binario;
 
 import java.awt.Color;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import javax.swing.JTextPane;
 import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.Element;
 import javax.swing.text.SimpleAttributeSet;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
@@ -74,5 +79,33 @@ public class TextEditor {
         } else {
             txt.setCharacterAttributes(att, false);
         }
+    }
+    
+    public List<AdminPersistencia.TextRun> extractRuns() throws BadLocationException{
+        List<AdminPersistencia.TextRun> run=new ArrayList<>();
+        int length=doc.getLength();
+        int pos=0;
+        
+        while(pos<length){
+            Element e=doc.getCharacterElement(pos);
+            AttributeSet as=e.getAttributes();
+            int fin=e.getEndOffset();
+            
+            if(fin>length){
+                fin=length;
+            }
+            String txt=doc.getText(pos,fin-pos);
+            String font=StyleConstants.getFontFamily(as);
+            int size=StyleConstants.getFontSize(as);
+            Color color=StyleConstants.getForeground(as);
+            boolean bold=StyleConstants.isBold(as);
+            boolean italic=StyleConstants.isItalic(as);
+            boolean underline=StyleConstants.isUnderline(as);
+            boolean strike=StyleConstants.isStrikeThrough(as);
+            
+            run.add(new AdminPersistencia.TextRun(txt,font,size,color,bold,italic,underline,strike));
+            pos=fin;
+        }
+        return run;
     }
 }
